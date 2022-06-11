@@ -9,7 +9,9 @@
 (define-non-fungible-token beach-bum-nft uint)
 
 ;; constants
-(define-constant not-owner-error (err u100))
+(define-constant contract-owner tx-sender)
+(define-constant not-nft-owner-error (err u100))
+(define-constant not-contract-owner-error (err u101))
 
 ;; variables
 (define-data-var last-token-id uint u0)
@@ -27,7 +29,18 @@
 
 (define-public (transfer (nft-id uint) (sender principal) (recipient principal))
     (begin
-        (asserts! (is-eq tx-sender sender) not-owner-error)
+        (asserts! (is-eq tx-sender sender) not-nft-owner-error)
         (nft-transfer? beach-bum-nft nft-id sender recipient)
+    )
+)
+
+(define-public (mint (recipient principal))
+    (let
+        (
+            (token-id (+ u1 (var-get last-token-id)))
+        )
+        (var-set last-token-id token-id)
+        (asserts!  (is-eq tx-sender contract-owner) not-contract-owner-error)
+        (nft-mint? beach-bum-nft token-id recipient)
     )
 )
