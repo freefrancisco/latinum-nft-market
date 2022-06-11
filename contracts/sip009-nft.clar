@@ -1,15 +1,21 @@
 
 ;; sip009-nft
-;; <add a description here>
+;; Contract that specifies the NFT to be sold in tiny market
 
-;; constants
-;;
+(impl-trait .sip009-nft-trait.sip009-nft-trait)
 
-;; data maps and vars
-;;
+(define-non-fungible-token beach-bum uint)
 
-;; private functions
-;;
+(define-read-only (get-last-token-id)
+    (ok u0) ;;TODO implement
+)
 
-;; public functions
-;;
+(define-read-only (get-owner (nft uint))
+    (ok (some tx-sender)) ;; TODO implement
+)
+
+(define-read-only (get-token-uri (nft uint)) (ok none))
+
+(define-public (transfer (nft uint) (from principal) (to principal))
+    (ok true) ;; TODO implement
+)
