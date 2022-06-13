@@ -42,3 +42,8 @@
         (print memo)
         (asserts!  (is-eq tx-sender sender) not-token-owner-error)
         (ft-transfer? gold-pressed-latinum amount sender recipient)))
+
+(define-public (mint (amount uint) (recipient principal))
+    (begin
+        (asserts! (is-eq tx-sender contract-owner) not-contract-owner-error)
+        (ft-mint? gold-pressed-latinum amount recipient)))
