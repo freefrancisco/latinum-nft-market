@@ -6,10 +6,11 @@
 (impl-trait .sip009-nft-trait.sip009-nft-trait)
 
 ;; the name of the nft and the unit of the id
-(define-non-fungible-token beach-bum-nft uint)
+(define-non-fungible-token federation-starship uint)
 
 ;; constants
 (define-constant contract-owner tx-sender)
+;; error constants
 (define-constant not-nft-owner-error (err u100))
 (define-constant not-contract-owner-error (err u101))
 
@@ -22,7 +23,7 @@
 )
 
 (define-read-only (get-owner (nft-id uint))
-    (ok (nft-get-owner? beach-bum-nft nft-id))
+    (ok (nft-get-owner? federation-starship nft-id))
 )
 
 (define-read-only (get-token-uri (nft-id uint)) (ok none)) ;; not implemented
@@ -30,7 +31,7 @@
 (define-public (transfer (nft-id uint) (sender principal) (recipient principal))
     (begin
         (asserts! (is-eq tx-sender sender) not-nft-owner-error)
-        (nft-transfer? beach-bum-nft nft-id sender recipient)
+        (nft-transfer? federation-starship nft-id sender recipient)
     )
 )
 
@@ -41,6 +42,6 @@
         )
         (var-set last-token-id token-id)
         (asserts!  (is-eq tx-sender contract-owner) not-contract-owner-error)
-        (nft-mint? beach-bum-nft token-id recipient)
+        (nft-mint? federation-starship token-id recipient)
     )
 )
