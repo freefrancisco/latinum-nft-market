@@ -20,6 +20,7 @@ path = "contracts/sip010-token.clar"
 
 [contracts.tiny-market]
 path = "contracts/tiny-market.clar"
+depends_on = ["sip009-nft-trait", "sip010-ft-trait"]
 
 [repl]
 costs_version = 2
