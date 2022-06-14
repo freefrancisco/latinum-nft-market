@@ -307,3 +307,115 @@ Clarinet.test({
         assertEquals(block.receipts[0].events.length, 0);
     }
 });
+
+Clarinet.test({
+    name: "Cannot fulfil an active STX listing with insufficient balance",
+    async fn(chain: Chain, accounts: Map<string, Account>) {
+        const [deployer, maker, taker] = ['deployer', 'wallet_1', 'wallet_2'].map(name => accounts.get(name)!);
+        const { nftAssetContract, tokenId } = mintNft({ chain, deployer, recipient: maker });
+        const order: Order = { tokenId, expiry: 10, price: taker.balance + 10 };
+        const block = chain.mineBlock([
+            whitelistAssetTx(nftAssetContract, true, deployer),
+            listOrderTx(nftAssetContract, maker, order),
+            Tx.contractCall(contractName, 'fulfil-listing-stx', [types.uint(0), types.principal(nftAssetContract)], taker.address)
+        ]);
+        block.receipts[2].result.expectErr().expectUint(1);
+        assertEquals(block.receipts[2].events.length, 0);
+    }
+});
+
+Clarinet.test({
+    name: "Cannot fulfil an active SIP010 fungible token listing with insufficient balance",
+    async fn(chain: Chain, accounts: Map<string, Account>) {
+        const [deployer, maker, taker] = ['deployer', 'wallet_1', 'wallet_2'].map(name => accounts.get(name)!);
+        const price = 50;
+        const { nftAssetContract, tokenId } = mintNft({ chain, deployer, recipient: maker });
+        const { paymentAssetContract } = mintFt({ chain, deployer, recipient: taker, amount: price });
+        const order: Order = { tokenId, expiry: 10, price: taker.balance + 10, paymentAssetContract };
+        const block = chain.mineBlock([
+            whitelistAssetTx(nftAssetContract, true, deployer),
+            whitelistAssetTx(paymentAssetContract, true, deployer),
+            listOrderTx(nftAssetContract, maker, order),
+            Tx.contractCall(contractName, 'fulfil-listing-ft', [types.uint(0), types.principal(nftAssetContract), types.principal(paymentAssetContract)], taker.address)
+        ]);
+        block.receipts[3].result.expectErr().expectUint(1);
+        assertEquals(block.receipts[3].events.length, 0);
+    }
+});
+
+Clarinet.test({
+    name: "Intended taker can fulfil active listing",
+    async fn(chain: Chain, accounts: Map<string, Account>) {
+        const [deployer, maker, taker] = ['deployer', 'wallet_1', 'wallet_2'].map(name => accounts.get(name)!);
+        const { nftAssetContract, tokenId } = mintNft({ chain, deployer, recipient: maker });
+        const order: Order = { tokenId, expiry: 10, price: 10, taker: taker.address };
+        const block = chain.mineBlock([
+            whitelistAssetTx(nftAssetContract, true, deployer),
+            listOrderTx(nftAssetContract, maker, order),
+            Tx.contractCall(contractName, 'fulfil-listing-stx', [types.uint(0), types.principal(nftAssetContract)], taker.address)
+        ]);
+        block.receipts[2].result.expectOk().expectUint(0);
+        assertNftTransfer(block.receipts[2].events[0], nftAssetContract, tokenId, contractPrincipal(deployer), taker.address);
+        block.receipts[2].events.expectSTXTransferEvent(order.price, taker.address, maker.address);
+    }
+});
+
+Clarinet.test({
+    name: "Unintended taker cannot fulfil active listing",
+    async fn(chain: Chain, accounts: Map<string, Account>) {
+        const [deployer, maker, taker, unintendedTaker] = ['deployer', 'wallet_1', 'wallet_2', 'wallet_3'].map(name => accounts.get(name)!);
+        const { nftAssetContract, tokenId } = mintNft({ chain, deployer, recipient: maker });
+        const order: Order = { tokenId, expiry: 10, price: 10, taker: taker.address };
+        const block = chain.mineBlock([
+            whitelistAssetTx(nftAssetContract, true, deployer),
+            listOrderTx(nftAssetContract, maker, order),
+            Tx.contractCall(contractName, 'fulfil-listing-stx', [types.uint(0), types.principal(nftAssetContract)], unintendedTaker.address)
+        ]);
+        block.receipts[2].result.expectErr().expectUint(2006);
+        assertEquals(block.receipts[2].events.length, 0);
+    }
+});
+
+Clarinet.test({
+    name: "Can fulfil multiple active listings in any order",
+    async fn(chain: Chain, accounts: Map<string, Account>) {
+        const deployer = accounts.get('deployer')!;
+        const expiry = 100;
+
+        const randomSorter = () => Math.random() - .5;
+
+        // Take some makers and takers in random order.
+        const makers = ['wallet_1', 'wallet_2', 'wallet_3', 'wallet_4'].sort(randomSorter).map(name => accounts.get(name)!);
+        const takers = ['wallet_5', 'wallet_6', 'wallet_7', 'wallet_8'].sort(randomSorter).map(name => accounts.get(name)!);
+
+        // Mint some NFTs so the IDs do not always start at zero.
+        const mints = [...Array(1 + ~~(Math.random() * 10))].map(() => mintNft({ chain, deployer, recipient: deployer }));
+
+        // Mint an NFT for all makers and generate orders.
+        const nfts = makers.map(recipient => mintNft({ chain, deployer, recipient }));
+        const orders: Order[] = makers.map((maker, i) => ({ tokenId: nfts[i].tokenId, expiry, price: 1 + ~~(Math.random() * 10) }));
+
+        // Whitelist asset contract
+        chain.mineBlock([whitelistAssetTx(mints[0].nftAssetContract, true, deployer)]);
+
+        // List all NFTs.
+        const block = chain.mineBlock(
+            makers.map((maker, i) => listOrderTx(nfts[i].nftAssetContract, maker, makeOrder(orders[i])))
+        );
+        const orderIdUints = block.receipts.map(receipt => receipt.result.expectOk().toString());
+
+        // Attempt to fulfil all listings.
+        const block2 = chain.mineBlock(
+            takers.map((taker, i) => Tx.contractCall(contractName, 'fulfil-listing-stx', [orderIdUints[i], types.principal(nfts[i].nftAssetContract)], taker.address))
+        );
+
+        const contractAddress = contractPrincipal(deployer);
+
+        // Assert that all orders were fulfilled and that the NFTs and STX have been tranferred to the appropriate principals.
+        block2.receipts.map((receipt, i) => {
+            assertEquals(receipt.result.expectOk(), orderIdUints[i]);
+            assertNftTransfer(receipt.events[0], nfts[i].nftAssetContract, nfts[i].tokenId, contractAddress, takers[i].address);
+            receipt.events.expectSTXTransferEvent(orders[i].price, takers[i].address, makers[i].address);
+        });
+    }
+});
