@@ -419,3 +419,81 @@ Clarinet.test({
         });
     }
 });
+
+// bogus contracts tests
+
+Clarinet.test({
+    name: "Cannot fulfil a listing with a different NFT contract reference",
+    async fn(chain: Chain, accounts: Map<string, Account>) {
+        const [deployer, maker, taker] = ['deployer', 'wallet_1', 'wallet_2'].map(name => accounts.get(name)!);
+        const expiry = 10;
+        const { nftAssetContract, tokenId } = mintNft({ chain, deployer, recipient: maker });
+        const order: Order = { tokenId, expiry: 10, price: 10 };
+        const bogusNftAssetContract = `${deployer.address}.bogus-nft`;
+        const block = chain.mineBlock([
+            whitelistAssetTx(nftAssetContract, true, deployer),
+            listOrderTx(nftAssetContract, maker, order),
+            Tx.contractCall(contractName, 'fulfil-listing-stx', [types.uint(0), types.principal(bogusNftAssetContract)], taker.address)
+        ]);
+        block.receipts[2].result.expectErr().expectUint(2003);
+        assertEquals(block.receipts[2].events.length, 0);
+    }
+});
+
+Clarinet.test({
+    name: "Cannot fulfil an active STX listing with SIP010 fungible tokens",
+    async fn(chain: Chain, accounts: Map<string, Account>) {
+        const [deployer, maker, taker] = ['deployer', 'wallet_1', 'wallet_2'].map(name => accounts.get(name)!);
+        const price = 50;
+        const { nftAssetContract, tokenId } = mintNft({ chain, deployer, recipient: maker });
+        const { paymentAssetContract } = mintFt({ chain, deployer, recipient: taker, amount: price });
+        const order: Order = { tokenId, expiry: 10, price };
+        const block = chain.mineBlock([
+            whitelistAssetTx(nftAssetContract, true, deployer),
+            whitelistAssetTx(paymentAssetContract, true, deployer),
+            listOrderTx(nftAssetContract, maker, order),
+            Tx.contractCall(contractName, 'fulfil-listing-ft', [types.uint(0), types.principal(nftAssetContract), types.principal(paymentAssetContract)], taker.address)
+        ]);
+        block.receipts[3].result.expectErr().expectUint(2004);
+        assertEquals(block.receipts[3].events.length, 0);
+    }
+});
+
+Clarinet.test({
+    name: "Cannot fulfil an active SIP010 fungible token listing with STX",
+    async fn(chain: Chain, accounts: Map<string, Account>) {
+        const [deployer, maker, taker] = ['deployer', 'wallet_1', 'wallet_2'].map(name => accounts.get(name)!);
+        const price = 50;
+        const { nftAssetContract, tokenId } = mintNft({ chain, deployer, recipient: maker });
+        const { paymentAssetContract } = mintFt({ chain, deployer, recipient: taker, amount: price });
+        const order: Order = { tokenId, expiry: 10, price, paymentAssetContract };
+        const block = chain.mineBlock([
+            whitelistAssetTx(nftAssetContract, true, deployer),
+            whitelistAssetTx(paymentAssetContract, true, deployer),
+            listOrderTx(nftAssetContract, maker, order),
+            Tx.contractCall(contractName, 'fulfil-listing-stx', [types.uint(0), types.principal(nftAssetContract)], taker.address)
+        ]);
+        block.receipts[3].result.expectErr().expectUint(2004);
+        assertEquals(block.receipts[3].events.length, 0);
+    }
+});
+
+Clarinet.test({
+    name: "Cannot fulfil an active SIP010 fungible token listing with a different SIP010 fungible token contract reference",
+    async fn(chain: Chain, accounts: Map<string, Account>) {
+        const [deployer, maker, taker] = ['deployer', 'wallet_1', 'wallet_2'].map(name => accounts.get(name)!);
+        const price = 50;
+        const { nftAssetContract, tokenId } = mintNft({ chain, deployer, recipient: maker });
+        const { paymentAssetContract } = mintFt({ chain, deployer, recipient: taker, amount: price });
+        const bogusPaymentAssetContract = `${deployer.address}.bogus-ft`;
+        const order: Order = { tokenId, expiry: 10, price, paymentAssetContract };
+        const block = chain.mineBlock([
+            whitelistAssetTx(nftAssetContract, true, deployer),
+            whitelistAssetTx(paymentAssetContract, true, deployer),
+            listOrderTx(nftAssetContract, maker, order),
+            Tx.contractCall(contractName, 'fulfil-listing-ft', [types.uint(0), types.principal(nftAssetContract), types.principal(bogusPaymentAssetContract)], taker.address)
+        ]);
+        block.receipts[3].result.expectErr().expectUint(2004);
+        assertEquals(block.receipts[3].events.length, 0);
+    }
+});
